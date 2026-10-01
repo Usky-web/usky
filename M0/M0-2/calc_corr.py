@@ -78,7 +78,16 @@ def calc_pearson_r(x_values, y_values):
     
     cov = calc_covariance(x_values, y_values, mean_x, mean_y)
     r = cov / (math.sqrt(var_x) * math.sqrt(var_y))
-    return n, mean_x, mean_y, r
+    return n, mean_x, mean_y, r, var_x, var_y
+
+def verify_with_numpy(x_values, y_values):
+    """用 numpy 验证计算结果"""
+    try:
+        import numpy as np
+        np_r = np.corrcoef(x_values, y_values)[0, 1]
+        return np_r
+    except ImportError:
+        return None
 
 def main():
     if len(sys.argv) != 2:
@@ -89,12 +98,22 @@ def main():
         config = load_config(sys.argv[1])
         headers, data = load_csv_data(config['csv_path'])
         x_values, y_values = extract_columns(headers, data, config['col_x'], config['col_y'])
-        n, mean_x, mean_y, r = calc_pearson_r(x_values, y_values)
+        n, mean_x, mean_y, r, var_x, var_y = calc_pearson_r(x_values, y_values)
         
+        print(f"=== 皮尔逊相关系数计算结果 ===")
         print(f"n     = {n}")
         print(f"mean_x = {mean_x:.4f}")
         print(f"mean_y = {mean_y:.4f}")
+        print(f"var_x = {var_x:.4f}")
+        print(f"var_y = {var_y:.4f}")
         print(f"r     = {r:.4f}")
+        
+        # numpy 验证
+        np_r = verify_with_numpy(x_values, y_values)
+        if np_r is not None:
+            print(f"\n=== numpy 参考值 ===")
+            print(f"r (numpy) = {np_r:.4f}")
+            print(f"差异 = {abs(r - np_r):.2e}")
     except CorrError as e:
         print(f"错误: {e}")
         sys.exit(2)
