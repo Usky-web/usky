@@ -1,150 +1,173 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-皮尔逊相关系数计算脚本
-用法：python calc_corr.py <配置文件.yaml>
+calc_corr.py —— M0-2 首个代码工具：计算两列数据的皮尔逊相关系数
+
+用法:
+    python3 calc_corr.py --config config.yaml
+    python3 calc_corr.py config.yaml                     # 位置参数亦可
+    python3 calc_corr.py --config config.yaml --verify   # 用 numpy 交叉验证结果
+
+输出（打印到 stdout）:
+    n = 样本数
+    mean_x / mean_y = 两列各自的均值
+    r = 皮尔逊相关系数（范围 -1 ~ 1）
+
+异常输入（文件不存在 / 空文件 / 列名不匹配 / 非数值 / 零方差）:
+    打印可读错误信息到 stderr，并以非 0 退出码结束，不抛栈回溯。
 """
 
-import sys
-import yaml
+import argparse
 import csv
 import math
-import logging
+import os
+import sys
 
-logging.basicConfig(
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%H:%M:%S',
-    level=logging.DEBUG
-)
-logger = logging.getLogger(__name__)
+try:
+    import yaml
+except ImportError:  # 给出可读提示而不是裸崩
+    sys.stderr.write("错误: 缺少依赖 PyYAML，请先执行: uv pip install pyyaml\n")
+    sys.exit(1)
+
 
 class CorrError(Exception):
-    """自定义异常类"""
-    pass
+    """业务错误：统一转成可读提示，不向用户抛栈回溯。"""
 
-def load_config(yaml_path):
-    """从 yaml 文件读取配置"""
-    logger.info(f"加载配置文件: {yaml_path}")
+
+def load_config(path):
+    """读取 yaml 配置。返回 dict。"""
+    if not os.path.isfile(path):
+        raise CorrError("配置文件不存在: %s" % path)
     try:
-        with open(yaml_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        logger.debug(f"配置内容: {config}")
-        return config
-    except FileNotFoundError:
-        raise CorrError(f"配置文件不存在: {yaml_path}")
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        raise CorrError(f"配置文件格式错误: {e}")
+        raise CorrError("YAML 语法错误: %s" % e)
+    if not isinstance(cfg, dict):
+        raise CorrError("配置格式错误: 顶层必须是 yaml 字典")
+    if "input_csv" not in cfg or "columns" not in cfg:
+        raise CorrError("配置缺少必要字段: 需要 input_csv 与 columns.{x,y}")
+    cols = cfg["columns"]
+    if not isinstance(cols, dict) or "x" not in cols or "y" not in cols:
+        raise CorrError("配置缺少必要字段: columns 中需要 x 与 y")
+    return cfg
 
-def load_csv_data(csv_path):
-    """读取 csv 文件并返回列名和数据行"""
-    logger.info(f"读取 CSV 文件: {csv_path}")
+
+def resolve_csv_path(cfg_path, csv_path):
+    """解析 csv 路径：绝对路径直接用；相对路径以「配置文件所在目录」或「当前目录」为基准。"""
+    if os.path.isabs(csv_path):
+        return csv_path
+    candidates = [os.path.join(os.path.dirname(os.path.abspath(cfg_path)), csv_path), csv_path]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    raise CorrError("找不到数据文件 %s（已尝试: %s）" % (csv_path, "、".join(candidates)))
+
+
+def read_columns(csv_path, col_x, col_y):
+    """读取 csv 中两列数据，返回 (xs, ys) 两个 float 列表。"""
     try:
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            try:
-                headers = next(reader)
-            except StopIteration:
-                raise CorrError("CSV 文件为空")
-            data = [row for row in reader]
-        if not data:
-            raise CorrError("CSV 文件没有数据行")
-        logger.debug(f"列名: {headers}, 数据行数: {len(data)}")
-        return headers, data
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames is None:
+                raise CorrError("空文件: %s" % csv_path)
+            for need in (col_x, col_y):
+                if need not in reader.fieldnames:
+                    raise CorrError("列名不匹配: csv 中不存在列 %r（实际列: %s）"
+                                    % (need, ", ".join(reader.fieldnames)))
+            xs, ys = [], []
+            for i, row in enumerate(reader, start=2):  # 行号从 2 开始（第 1 行是表头）
+                try:
+                    xs.append(float(row[col_x]))
+                    ys.append(float(row[col_y]))
+                except (TypeError, ValueError):
+                    raise CorrError("第 %d 行含非数值内容: %r / %r"
+                                    % (i, row[col_x], row[col_y]))
+            if not xs:
+                raise CorrError("空文件（只有表头没有数据行）: %s" % csv_path)
+            return xs, ys
     except FileNotFoundError:
-        raise CorrError(f"CSV 文件不存在: {csv_path}")
+        raise CorrError("文件不存在: %s" % csv_path)
+    except OSError as e:
+        raise CorrError("读取文件失败: %s" % e)
 
-def extract_columns(headers, data, col_x_name, col_y_name):
-    """从数据中提取指定的两列"""
-    logger.info(f"提取列: x={col_x_name}, y={col_y_name}")
-    try:
-        idx_x = headers.index(col_x_name)
-        idx_y = headers.index(col_y_name)
-    except ValueError as e:
-        available = ", ".join(headers)
-        raise CorrError(f"列名不存在: {e}\n可用列名: {available}")
-    
-    x_values = [float(row[idx_x]) for row in data]
-    y_values = [float(row[idx_y]) for row in data]
-    logger.debug(f"x 值: {x_values}")
-    logger.debug(f"y 值: {y_values}")
-    return x_values, y_values
 
-def calc_mean(values):
-    return sum(values) / len(values)
+def pearson_corr(xs, ys):
+    """
+    手写皮尔逊相关系数: r = SSxy / sqrt(SSx * SSy)
+      其中 SSx = sum((x-mean_x)^2), SSy = sum((y-mean_y)^2), SSxy = sum((x-mean_x)(y-mean_y))
+    返回 (n, mean_x, mean_y, r)。
+    若某一列方差为 0（取值恒定），相关系数无定义，报可读错误。
+    """
+    n = len(xs)
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    ss_x = 0.0
+    ss_y = 0.0
+    ss_xy = 0.0
+    for x, y in zip(xs, ys):
+        dx = x - mean_x
+        dy = y - mean_y
+        ss_x += dx * dx
+        ss_y += dy * dy
+        ss_xy += dx * dy
+    if ss_x == 0.0 or ss_y == 0.0:
+        raise CorrError("零方差: 某列取值恒定，相关系数无定义")
+    r = ss_xy / math.sqrt(ss_x * ss_y)
+    # 浮点误差可能让 |r| 略超 1，收敛到合法区间
+    if r > 1.0:
+        r = 1.0
+    elif r < -1.0:
+        r = -1.0
+    return n, mean_x, mean_y, r
 
-def calc_variance(values, mean):
-    return sum((v - mean) ** 2 for v in values) / (len(values) - 1)
 
-def calc_covariance(x_values, y_values, mean_x, mean_y):
-    n = len(x_values)
-    return sum((x_values[i] - mean_x) * (y_values[i] - mean_y) for i in range(n)) / (n - 1)
-
-def calc_pearson_r(x_values, y_values):
-    """计算皮尔逊相关系数，返回 (n, mean_x, mean_y, r, var_x, var_y)"""
-    n = len(x_values)
-    logger.info(f"计算皮尔逊相关系数，数据点数量: {n}")
-    
-    if n < 2:
-        raise CorrError("至少需要 2 个数据点才能计算相关系数")
-    
-    mean_x = calc_mean(x_values)
-    mean_y = calc_mean(y_values)
-    logger.debug(f"均值: x̄={mean_x:.4f}, ȳ={mean_y:.4f}")
-    
-    var_x = calc_variance(x_values, mean_x)
-    var_y = calc_variance(y_values, mean_y)
-    logger.debug(f"样本方差: s²_x={var_x:.4f}, s²_y={var_y:.4f}")
-    
-    if var_x == 0 or var_y == 0:
-        raise CorrError(f"方差为零 (var_x={var_x}, var_y={var_y})，无法计算相关系数")
-    
-    cov = calc_covariance(x_values, y_values, mean_x, mean_y)
-    logger.debug(f"样本协方差: cov={cov:.4f}")
-    
-    std_x = math.sqrt(var_x)
-    std_y = math.sqrt(var_y)
-    logger.debug(f"标准差: s_x={std_x:.4f}, s_y={std_y:.4f}")
-    
-    r = cov / (std_x * std_y)
-    logger.info(f"相关系数 r = {cov:.4f} / ({std_x:.4f} × {std_y:.4f}) = {r:.4f}")
-    
-    return n, mean_x, mean_y, r, var_x, var_y
-
-def verify_with_numpy(x_values, y_values):
-    """用 numpy 验证计算结果"""
+def verify_with_numpy(xs, ys, r):
+    """可选：用 numpy.corrcoef 交叉验证手写结果（仅验证，不参与核心计算）。"""
     try:
         import numpy as np
-        np_r = np.corrcoef(x_values, y_values)[0, 1]
-        return np_r
     except ImportError:
-        return None
+        return "未安装 numpy，跳过交叉验证"
+    ref = float(np.corrcoef(xs, ys)[0, 1])
+    if abs(ref - r) <= 1e-9:
+        return "与 numpy.corrcoef 一致 (%.10f)" % ref
+    return "警告: 与 numpy.corrcoef 不一致 (numpy=%.10f, 手写=%.10f)" % (ref, r)
 
-def main():
-    if len(sys.argv) != 2:
-        print("用法: python calc_corr.py <配置文件.yaml>")
-        sys.exit(1)
-    
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description="计算两列数据的皮尔逊相关系数")
+    parser.add_argument("--config", help="yaml 配置文件路径（含 input_csv 与 columns.x/y）")
+    parser.add_argument("--verify", action="store_true", help="用 numpy 交叉验证结果")
+    args, unknown = parser.parse_known_args(argv)
+    # 兼容位置参数: python3 calc_corr.py config.yaml
+    if not args.config and unknown:
+        args.config = unknown[0]
+    if not args.config:
+        parser.error("必须指定配置文件: --config config.yaml")
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
     try:
-        config = load_config(sys.argv[1])
-        headers, data = load_csv_data(config['csv_path'])
-        x_values, y_values = extract_columns(headers, data, config['col_x'], config['col_y'])
-        n, mean_x, mean_y, r, var_x, var_y = calc_pearson_r(x_values, y_values)
-        
-        print(f"\n=== 皮尔逊相关系数计算结果 ===")
-        print(f"n     = {n}")
-        print(f"mean_x = {mean_x:.4f}")
-        print(f"mean_y = {mean_y:.4f}")
-        print(f"var_x = {var_x:.4f}")
-        print(f"var_y = {var_y:.4f}")
-        print(f"r     = {r:.4f}")
-        
-        np_r = verify_with_numpy(x_values, y_values)
-        if np_r is not None:
-            print(f"\n=== numpy 参考值 ===")
-            print(f"r (numpy) = {np_r:.4f}")
-            print(f"差异 = {abs(r - np_r):.2e}")
+        cfg = load_config(args.config)
+        csv_path = resolve_csv_path(args.config, cfg["input_csv"])
+        xs, ys = read_columns(csv_path, cfg["columns"]["x"], cfg["columns"]["y"])
+        n, mean_x, mean_y, r = pearson_corr(xs, ys)
+        print("n = %d" % n)
+        print("mean_x = %.6f" % mean_x)
+        print("mean_y = %.6f" % mean_y)
+        print("r = %.10f" % r)
+        if args.verify:
+            print("[verify] %s" % verify_with_numpy(xs, ys, r))
+        return 0
     except CorrError as e:
-        logger.error(f"错误: {e}")
-        sys.exit(2)
+        sys.stderr.write("错误: %s\n" % e)
+        return 1
+    except Exception as e:  # 兜底：任何意外异常都不抛回溯
+        sys.stderr.write("错误: 发生未预期的问题: %s\n" % e)
+        return 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
