@@ -58,17 +58,17 @@ ros2 launch smartcar_m1_ns bringup.launch.py \
   params_file2:=/abs/path/params_robot2.yaml
 ```
 
-| Launch 参数 | 默认值 | 说明 |
-| :-- | :-- | :-- |
-| `namespace` | `robot1` | 第一组命名空间 |
-| `second_namespace` | `robot2` | 第二组命名空间；设空则只起一组 |
-| `params_file` | 空 | 第一组 YAML；留空用包内 `params/params_robot1.yaml` |
-| `params_file2` | 空 | 第二组 YAML；留空 = **复用第一份文件 + Launch 内覆盖阈值 0.5** |
-| `use_sim_time` | `false` | 是否使用仿真时间 |
+| Launch 参数          | 默认值      | 说明                                           |
+|:------------------ |:-------- |:-------------------------------------------- |
+| `namespace`        | `robot1` | 第一组命名空间                                      |
+| `second_namespace` | `robot2` | 第二组命名空间；设空则只起一组                              |
+| `params_file`      | 空        | 第一组 YAML；留空用包内 `params/params_robot1.yaml`   |
+| `params_file2`     | 空        | 第二组 YAML；留空 = **复用第一份文件 + Launch 内覆盖阈值 0.5** |
+| `use_sim_time`     | `false`  | 是否使用仿真时间                                     |
 
 ---
 
-## 四、验收（对齐题面 4 条，含实测）
+## 四、验收
 
 ### 1. 同时起两组 → 6 个节点、话题隔离
 
@@ -118,16 +118,16 @@ $ ros2 launch smartcar_m1_ns bringup.launch.py params_file:=/nope.yaml
 
 ## 五、参数覆盖的两种姿势（都实测过）
 
-| 姿势 | 命令 | 结果 |
-| :-- | :-- | :-- |
-| **A. Launch 内覆盖**（默认） | `ros2 launch smartcar_m1_ns bringup.launch.py` | 两组**同一份** `params_robot1.yaml`，robot2 由 Launch 覆盖成 `alarm_threshold=0.5`；alpha 都是 0.3 |
-| **B. 两个独立文件** | `ros2 launch smartcar_m1_ns bringup.launch.py params_file2:=.../params_robot2.yaml` | robot1：alpha=0.3 / 阈值 0.3；robot2：alpha=0.6 / 阈值 0.5 |
+| 姿势                    | 命令                                                                                  | 结果                                                                                    |
+|:--------------------- |:----------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------- |
+| **A. Launch 内覆盖**（默认） | `ros2 launch smartcar_m1_ns bringup.launch.py`                                      | 两组**同一份** `params_robot1.yaml`，robot2 由 Launch 覆盖成 `alarm_threshold=0.5`；alpha 都是 0.3 |
+| **B. 两个独立文件**         | `ros2 launch smartcar_m1_ns bringup.launch.py params_file2:=.../params_robot2.yaml` | robot1：alpha=0.3 / 阈值 0.3；robot2：alpha=0.6 / 阈值 0.5                                   |
 
 姿势 A 更能回答"同一参数在不同命名空间取不同值"——证明的是 **Launch 的覆盖能力**，而不是"两份文件碰巧不一样"。
 
 ---
 
-## 六、三个设计决定（答辩要能讲）
+## 六、三个设计决定（答辩）
 
 1. **为什么不用 `GroupAction + PushRosNamespace`，而是每个 Node 写 `namespace=`**
    因为节点C 是由 `OnProcessStart` 事件触发的，事件回调里启动的 action 不一定继承
@@ -144,10 +144,10 @@ $ ros2 launch smartcar_m1_ns bringup.launch.py params_file:=/nope.yaml
 
 ---
 
-## 七、踩坑记录（真实发生，可用于 M1-4 的 FAULTS.md 素材）
+## 七、踩坑记录
 
-| # | 现象 | 定位过程 | 根因 | 修复 |
-| :-- | :-- | :-- | :-- | :-- |
-| 1 | `ros2 launch` 直接失败：`ImportError: cannot import name 'OnProcessStart' from 'launch_ros.event_handlers'` | 改之前按题面提示写成 `launch_ros.event_handlers`；报错后用 `grep -rl 'class OnProcessStart' /opt/ros/humble/lib/python3.10/site-packages/` 定位到真实文件 | Humble 里 `OnProcessStart` 在 **`launch/event_handlers/on_process_start.py`**，不在 `launch_ros` | 改成 `from launch.event_handlers import OnProcessStart` |
-| 2 | `colcon build` 报 `Clock skew detected. Your build may be incomplete` | 工程放在 `/mnt/c`（Windows 盘，WSL 访问有毫秒级时间偏差） | 跨文件系统时间戳比系统时钟"超前" 0.1–0.2 s，make 认为文件来自未来 | 警告不影响产物（两次编译均成功）；要彻底消掉可把工作空间放 WSL 原生盘 `~/` |
-| 3 | 启动后立即 `ros2 node list` 只看到 4 个节点 | 看 launch 日志时间戳：`node_b` 起来后约 0.1 s 才出现 `node_c` | 设计使然：C 由 B 的 `OnProcessStart` 触发 | 等 1–2 s 再查；这正好证明"顺序控制"生效 |
+| #   | 现象                                                                                                     | 定位过程                                                                                                                                | 根因                                                                                          | 修复                                                    |
+|:--- |:------------------------------------------------------------------------------------------------------ |:----------------------------------------------------------------------------------------------------------------------------------- |:------------------------------------------------------------------------------------------- |:----------------------------------------------------- |
+| 1   | `ros2 launch` 直接失败：`ImportError: cannot import name 'OnProcessStart' from 'launch_ros.event_handlers'` | 改之前按题面提示写成 `launch_ros.event_handlers`；报错后用 `grep -rl 'class OnProcessStart' /opt/ros/humble/lib/python3.10/site-packages/` 定位到真实文件 | Humble 里 `OnProcessStart` 在 **`launch/event_handlers/on_process_start.py`**，不在 `launch_ros` | 改成 `from launch.event_handlers import OnProcessStart` |
+| 2   | `colcon build` 报 `Clock skew detected. Your build may be incomplete`                                   | 工程放在 `/mnt/c`（Windows 盘，WSL 访问有毫秒级时间偏差）                                                                                             | 跨文件系统时间戳比系统时钟"超前" 0.1–0.2 s，make 认为文件来自未来                                                   | 警告不影响产物（两次编译均成功）；要彻底消掉可把工作空间放 WSL 原生盘 `~/`            |
+| 3   | 启动后立即 `ros2 node list` 只看到 4 个节点                                                                       | 看 launch 日志时间戳：`node_b` 起来后约 0.1 s 才出现 `node_c`                                                                                     | 设计使然：C 由 B 的 `OnProcessStart` 触发                                                            | 等 1–2 s 再查；这正好证明"顺序控制"生效                              |
