@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+# ROS2 工作空间构建产物（由 colcon 生成，不进版本库）
+build/
+install/
+log/
