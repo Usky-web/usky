@@ -1,0 +1,6 @@
+# 报警服务：请求 / 响应
+float32 distance        # 触发报警时测到的距离（米）
+string  source          # 触发来源，例如 node_c_alarm
+---
+bool   success          # 服务端是否成功处理
+string message          # 服务端返回说明，例如 "alarm handled"
