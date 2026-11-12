@@ -1,0 +1,54 @@
+frames:
+  map: map
+  odom: odom
+  base_link: base_link
+  laser_link: laser_link
+  camera_link: camera_link
+laser_link:
+  parent: base_link
+  xyz:
+  - 0.15
+  - 0.0
+  - 0.2
+  rpy:
+  - 0.0
+  - 0.0
+  - 0.0
+camera_link:
+  parent: base_link
+  xyz:
+  - 0.1
+  - 0.0
+  - 0.3
+  rpy:
+  - 0.0
+  - 0.0
+  - 0.0
+camera_intrinsics:
+  width: 640
+  height: 480
+  fx: 500.0
+  fy: 500.0
+  cx: 320.0
+  cy: 240.0
+  distortion_model: plumb_bob
+  d:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+scan:
+  n_beams: 180
+  angle_min_deg: -90.0
+  angle_max_deg: 90.0
+  range_min: 0.1
+  range_max: 8.0
+  rate_hz: 10.0
+  jitter_ms: 3.0
+camera:
+  width: 640
+  height: 480
+  encoding: rgb8
+  rate_hz: 27.0
+  jitter_ms: 2.0

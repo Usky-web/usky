@@ -5,3 +5,12 @@ __pycache__/
 build/
 install/
 log/
+
+# M1-3：bag 体积大（100 帧≈240MB）且能用 make_bag.py 现场生成，不进版本库
+sample_bag/
+M1/M1-3/sample_bag/
+demo_out/
+frames_*.pdf
+frames_*.gv
+.diag_*.log
+.log_*.txt
