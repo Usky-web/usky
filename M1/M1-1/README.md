@@ -74,26 +74,26 @@ ros2 run smartcar_m1 alarm_server
 
 ---
 
-## 四、接口与参数（严格按题面契约）
+## 四、接口与参数
 
-| 名称 | 类型 | 方向 |
-| :-- | :-- | :-- |
-| `/sensor_data` | `sensor_interfaces/msg/SensorData` | A → B |
-| `/processed_distance` | `std_msgs/msg/Float32` | B → C |
-| `/trigger_alarm` | `sensor_interfaces/srv/TriggerAlarm` | C 调用 / 服务端响应 |
+| 名称                    | 类型                                   | 方向           |
+|:--------------------- |:------------------------------------ |:------------ |
+| `/sensor_data`        | `sensor_interfaces/msg/SensorData`   | A → B        |
+| `/processed_distance` | `std_msgs/msg/Float32`               | B → C        |
+| `/trigger_alarm`      | `sensor_interfaces/srv/TriggerAlarm` | C 调用 / 服务端响应 |
 
-| 节点 | 参数 | 类型 | 默认值 |
-| :-- | :-- | :-- | :--: |
-| `node_b_filter` | `alpha` | double | 0.3 |
-| `node_c_alarm` | `alarm_threshold` | double | 0.3 |
-| `node_c_alarm` | `service_timeout` | double | 1.0 |
+| 节点              | 参数                | 类型     | 默认值 |
+|:--------------- |:----------------- |:------ |:---:|
+| `node_b_filter` | `alpha`           | double | 0.3 |
+| `node_c_alarm`  | `alarm_threshold` | double | 0.3 |
+| `node_c_alarm`  | `service_timeout` | double | 1.0 |
 
 补充参数（非契约，仅工程需要）：`node_a_sensor` 的 `rate_hz`(10.0)/`noise_std`(0.02)、
 `node_b_filter` 的 `log_every`(20)、`node_c_alarm` 的 `min_interval`(0.5)/`serve_alarm`(true)。
 
 ---
 
-## 五、验证（对齐题面"验收时考官会做"的 4 条）
+## 五、验证
 
 ### 1. 节点与频率
 
@@ -149,7 +149,7 @@ sensor_interfaces.srv.TriggerAlarm_Response(success=True, message='alarm handled
 
 ---
 
-## 六、三个设计决定（答辩时要能讲清）
+## 六、三个设计决定
 
 1. **为什么异步调用 + 看门狗，而不是 `spin_until_future_complete`**
    `spin_until_future_complete` 会在回调内部再次驱动 executor，单线程 executor 下会造成重入/阻塞，
@@ -159,7 +159,7 @@ sensor_interfaces.srv.TriggerAlarm_Response(success=True, message='alarm handled
 
 2. **`processd_distance` 为什么不是严格 10 Hz**
    `status != 0` 的帧按题面要求"不参与滤波"，同时也不发布（并打 `[DROP]` 警告）。
-   因此输出频率 = 输入频率 × 有效率。把无效数据注入频率压到 1.7%，既能让考官看到 `[DROP]` 警告，
+   因此输出频率 = 输入频率 × 有效率。把无效数据注入频率压到 1.7%，既能显示 `[DROP]` 警告，
    又能让 `ros2 topic hz` 保持在 9.8 Hz 左右（"约 10 Hz"）。
 
 3. **为什么有 `serve_alarm` 参数和 `alarm_server`**
@@ -169,12 +169,12 @@ sensor_interfaces.srv.TriggerAlarm_Response(success=True, message='alarm handled
 
 ---
 
-## 七、踩过的坑（供答辩追问）
+## 七、踩坑记录
 
-| # | 现象 | 原因 | 处理 |
-| :-- | :-- | :-- | :-- |
-| 1 | 自定义 msg/srv 编译后节点仍 `import` 失败 | 接口包没先编出来，或没 `source install/setup.bash` | 先 `colcon build --packages-select sensor_interfaces`，再全局 build 并 source |
-| 2 | `/processed_distance` 只有 9.09 Hz | 节点A 每 15/25 帧注入一次无效数据，丢弃率 ≈9% | 把注入频率降到 1/80、1/120，丢弃率 ≈1.7%，频率回到 ≈9.8 Hz |
-| 3 | 杀服务端后一开始没看到超时日志 | 测试窗口只有 4 s，距离正弦曲线那时还在阈值以上，根本没发起调用 | 延长窗口，并用 `ros2 topic pub -r 10` 强制喂 0.2 m 复现 |
-| 4 | `ros2 param set` 后终端没反应 | 参数没 `declare_parameter` 就 set 会失败 | 三个节点全部显式 declare，并加 `add_on_set_parameters_callback` 打日志 |
-| 5 | WSL 里在 `.venv` 里跑节点 import 不到 `rclpy` | M0 的 uv venv 是 `include-system-site-packages = false` | M1 全部用系统 `python3`（source ROS 环境后即可），不用 venv 跑节点 |
+| #   | 现象                                    | 原因                                                    | 处理                                                                      |
+|:--- |:------------------------------------- |:----------------------------------------------------- |:----------------------------------------------------------------------- |
+| 1   | 自定义 msg/srv 编译后节点仍 `import` 失败        | 接口包没先编出来，或没 `source install/setup.bash`               | 先 `colcon build --packages-select sensor_interfaces`，再全局 build 并 source |
+| 2   | `/processed_distance` 只有 9.09 Hz      | 节点A 每 15/25 帧注入一次无效数据，丢弃率 ≈9%                         | 把注入频率降到 1/80、1/120，丢弃率 ≈1.7%，频率回到 ≈9.8 Hz                               |
+| 3   | 杀服务端后一开始没看到超时日志                       | 测试窗口只有 4 s，距离正弦曲线那时还在阈值以上，根本没发起调用                     | 延长窗口，并用 `ros2 topic pub -r 10` 强制喂 0.2 m 复现                             |
+| 4   | `ros2 param set` 后终端没反应               | 参数没 `declare_parameter` 就 set 会失败                     | 三个节点全部显式 declare，并加 `add_on_set_parameters_callback` 打日志                |
+| 5   | WSL 里在 `.venv` 里跑节点 import 不到 `rclpy` | M0 的 uv venv 是 `include-system-site-packages = false` | M1 全部用系统 `python3`（source ROS 环境后即可），不用 venv 跑节点                        |
