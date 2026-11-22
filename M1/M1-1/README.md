@@ -178,3 +178,9 @@ sensor_interfaces.srv.TriggerAlarm_Response(success=True, message='alarm handled
 | 3   | 杀服务端后一开始没看到超时日志                       | 测试窗口只有 4 s，距离正弦曲线那时还在阈值以上，根本没发起调用                     | 延长窗口，并用 `ros2 topic pub -r 10` 强制喂 0.2 m 复现                             |
 | 4   | `ros2 param set` 后终端没反应               | 参数没 `declare_parameter` 就 set 会失败                     | 三个节点全部显式 declare，并加 `add_on_set_parameters_callback` 打日志                |
 | 5   | WSL 里在 `.venv` 里跑节点 import 不到 `rclpy` | M0 的 uv venv 是 `include-system-site-packages = false` | M1 全部用系统 `python3`（source ROS 环境后即可），不用 venv 跑节点                        |
+## 取舍与失效边界（按《创意组一轮考核》"权衡与判断"维度补）
+
+- **选了一阶低通而不是滑动窗口**：节点 B 用 `y = α·x + (1-α)·y_prev`，状态只有 1 个浮点数、每帧 O(1)、不需要缓存历史、延迟恒定。α 做成参数（默认 0.3），现场可 `ros2 param set` 改。
+- **放弃了什么**：抗突变能力。α=0.3 时时间常数约 3 帧（≈0.3 s），真实的急停式跳变要被拖慢两三帧才跟上。
+- **什么时候这套会失效**：① 输入带高频振动/毛刺时，一阶低通是"跟着滤"而不是"剔掉"，需要中值滤波或滑窗；② α 调到接近 1 就等于不滤波。
+- **告警阈值 0.3 m 的来由**：题面给定，做成参数只为现场可改；它属于业务阈值，不是算法参数。

@@ -151,3 +151,9 @@ $ ros2 launch smartcar_m1_ns bringup.launch.py params_file:=/nope.yaml
 | 1   | `ros2 launch` 直接失败：`ImportError: cannot import name 'OnProcessStart' from 'launch_ros.event_handlers'` | 改之前按题面提示写成 `launch_ros.event_handlers`；报错后用 `grep -rl 'class OnProcessStart' /opt/ros/humble/lib/python3.10/site-packages/` 定位到真实文件 | Humble 里 `OnProcessStart` 在 **`launch/event_handlers/on_process_start.py`**，不在 `launch_ros` | 改成 `from launch.event_handlers import OnProcessStart` |
 | 2   | `colcon build` 报 `Clock skew detected. Your build may be incomplete`                                   | 工程放在 `/mnt/c`（Windows 盘，WSL 访问有毫秒级时间偏差）                                                                                             | 跨文件系统时间戳比系统时钟"超前" 0.1–0.2 s，make 认为文件来自未来                                                   | 警告不影响产物（两次编译均成功）；要彻底消掉可把工作空间放 WSL 原生盘 `~/`            |
 | 3   | 启动后立即 `ros2 node list` 只看到 4 个节点                                                                       | 看 launch 日志时间戳：`node_b` 起来后约 0.1 s 才出现 `node_c`                                                                                     | 设计使然：C 由 B 的 `OnProcessStart` 触发                                                            | 等 1–2 s 再查；这正好证明"顺序控制"生效                              |
+## 取舍与失效边界（按《创意组一轮考核》"权衡与判断"维度补）
+
+- **不用 `PushRosNamespace`，改成给每个 Node 显式写 `namespace=`**：节点 C 由 B 的 `OnProcessStart` 事件触发，不一定继承 `GroupAction` 的命名空间，用 `PushRosNamespace` 会出现"节点 C 落回根命名空间"的隐蔽 bug。代价是每个节点都要写一遍，漏一个就错，所以统一由 launch 参数注入、不在文件里写死。
+- **第二组参数复用第一份 YAML 再覆盖**：`params_file2` 为空时复用 `params_file` 并在 Launch 内覆盖 `alarm_threshold=0.5`，好处是"只改一处就有差异"。**失效边界**：两组差异一旦超过一两项，覆盖逻辑就会退化成一堆特例，那时应该给两份独立 YAML。
+- **启动顺序用事件而不是 `TimerAction` 延时**：事件表示"进程真的起来了"，延时只是"猜它起来了"。代价是启动瞬间 `ros2 node list` 只看到 4 个节点，属于设计使然。
+- **滤波参数用 α 而不是"窗口大小"**：本题链路沿用 M1-1 的一阶低通，α 就是它的滤波参数。若要求的是滑动窗口长度，则要改节点 B 的内部实现（缓存 N 帧），我们没选，理由是窗口会引入 N×T 的固定延迟。
