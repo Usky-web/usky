@@ -7,17 +7,17 @@
 
 ## 一、交付清单
 
-| 路径 | 内容 |
-| :-- | :-- |
+| 路径                                             | 内容                                                                      |
+|:---------------------------------------------- |:----------------------------------------------------------------------- |
 | `src/m1_three/m1_three/static_tf_publisher.py` | 读 `extrinsics.yaml` → 发布 `map→odom→base_link→{laser_link, camera_link}` |
-| `src/m1_three/m1_three/projection_node.py` | 同步 + TF 变换 + 投影 + 发布 `/projection/debug_image` + 存图 |
-| `src/m1_three/m1_three/slop_scan.py` | slop 扫描实验（7 个 slop 同时跑，一次回放出完整对比） |
-| `src/m1_three/launch/m1_three.launch.py` | 一键启动 TF + 投影 |
-| `make_bag.py` | 题面提供的数据生成器（原样保留） |
-| `projection_01~03_*.png` | 默认外参下 **3 张不同时刻**的投影图 |
-| `projection_04_nondefault_laserz0.45.png` | **非默认外参**（laser z=0.45 / camera z=0.75 / fx=420）下的投影图，用于证明没写死数值 |
-| `scripts/record_demo.sh` + `录屏脚本.md` | `use_sim_time` true↔false 录屏用的逐步命令 |
-| `TASK.md` | 原题面 |
+| `src/m1_three/m1_three/projection_node.py`     | 同步 + TF 变换 + 投影 + 发布 `/projection/debug_image` + 存图                     |
+| `src/m1_three/m1_three/slop_scan.py`           | slop 扫描实验（7 个 slop 同时跑，一次回放出完整对比）                                       |
+| `src/m1_three/launch/m1_three.launch.py`       | 一键启动 TF + 投影                                                            |
+| `make_bag.py`                                  | 题面提供的数据生成器（原样保留）                                                        |
+| `projection_01~03_*.png`                       | 默认外参下 **3 张不同时刻**的投影图                                                   |
+| `projection_04_nondefault_laserz0.45.png`      | **非默认外参**（laser z=0.45 / camera z=0.75 / fx=420）下的投影图，用于证明没写死数值         |
+| `scripts/record_demo.sh` + `录屏脚本.md`           | `use_sim_time` true↔false 录屏用的逐步命令                                      |
+| `TASK.md`                                      | 原题面                                                                     |
 
 ---
 
@@ -51,10 +51,10 @@ ros2 topic hz /projection/debug_image
 
 同一个 bag，两种存放位置，实测差别巨大：
 
-| bag 位置 | `ros2 topic hz /scan` |
-| :-- | :-- |
+| bag 位置                                  | `ros2 topic hz /scan`                                               |
+|:--------------------------------------- |:------------------------------------------------------------------- |
 | `/mnt/c/.../sample_bag`（Windows 盘，走 9p） | `WARNING: topic [/scan] does not appear to be published yet`（9 秒零条） |
-| `~/m13_bag`（WSL 原生 ext4） | `average rate: 10.6`，稳定 10 Hz |
+| `~/m13_bag`（WSL 原生 ext4）                | `average rate: 10.6`，稳定 10 Hz                                       |
 
 原因是 `ros2 bag play` 对 sqlite3 做大量随机小读，走 9p 协议时单条消息的开销被放大到毫秒级，
 6 秒的 bag 实际要播几十秒，看起来就像"话题没数据"。
@@ -150,7 +150,7 @@ class Feed:                      # 满足 message_filters 的 registerCallback �
 
 ## 六、投影
 
-### 公式与坐标系（这一步最容易错）
+### 公式与坐标系
 
 ```
 激光点(laser_link, z=0) --TF--> camera_link（机体轴：x 前, y 左, z 上）
@@ -231,14 +231,21 @@ ros2 topic echo /projection/debug_image --field header --once
 
 ## 九、踩坑记录
 
-| # | 现象 | 根因 | 修复 |
-| :-- | :-- | :-- | :-- |
-| 1 | bag 放 `/mnt/c` 时 `ros2 topic hz /scan` 9 秒零条，`WARNING: ... does not appear to be published yet` | WSL 的 9p 协议下 sqlite3 随机小读极慢，6 秒的 bag 实际要播几十秒 | 生成/回放都放 WSL 原生盘 `~/`：`ros2 topic hz /scan` 立刻 10.6 Hz |
-| 2 | 三张效果图全落在同一秒内（t=0.203/5.834/5.907 之前那版），且配对只有 3 对 | 没有跳帧策略，前 3 对全在前 0.3 s；图像流被 `/mnt/c` 卡住导致大部分消息迟到 | 加 `save_interval`（相邻图至少隔 1.5 s 仿真时间）+ 修掉 bag 位置问题后配对恢复到 ~10 Hz |
-| 3 | `slop_scan` 一次跑 7 个 slop，配对数全是个位数、结果不可用 | 7 组独立订阅 = 复制 7 份 921 KB@27 Hz，≈175 MB/s 把 DDS 打爆，丢包主导结果 | 只订一次，用 `Feed` 把手消息推给 7 个真正的 `ApproximateTimeSynchronizer`，带宽 1/7 |
+| #   | 现象                                                                                              | 根因                                                      | 修复                                                               |
+|:--- |:----------------------------------------------------------------------------------------------- |:------------------------------------------------------- |:---------------------------------------------------------------- |
+| 1   | bag 放 `/mnt/c` 时 `ros2 topic hz /scan` 9 秒零条，`WARNING: ... does not appear to be published yet` | WSL 的 9p 协议下 sqlite3 随机小读极慢，6 秒的 bag 实际要播几十秒            | 生成/回放都放 WSL 原生盘 `~/`：`ros2 topic hz /scan` 立刻 10.6 Hz            |
+| 2   | 三张效果图全落在同一秒内（t=0.203/5.834/5.907 之前那版），且配对只有 3 对                                                | 没有跳帧策略，前 3 对全在前 0.3 s；图像流被 `/mnt/c` 卡住导致大部分消息迟到         | 加 `save_interval`（相邻图至少隔 1.5 s 仿真时间）+ 修掉 bag 位置问题后配对恢复到 ~10 Hz   |
+| 3   | `slop_scan` 一次跑 7 个 slop，配对数全是个位数、结果不可用                                                         | 7 组独立订阅 = 复制 7 份 921 KB@27 Hz，≈175 MB/s 把 DDS 打爆，丢包主导结果 | 只订一次，用 `Feed` 把手消息推给 7 个真正的 `ApproximateTimeSynchronizer`，带宽 1/7 |
+
 ## 取舍与失效边界（按《创意组一轮考核》"权衡与判断"维度补）
 
 - **slop 定 60 ms**：配对数量从 41 提到 62（+51%），配对时间差中位数 16.2 ms 仍小于相机周期（37 ms）的一半；再往上（100 ms+）配对数饱和在 69，P95 从 56 ms 涨到 88 ms，属于"多配了但更不准"。
 - **TF 查询用"最新可用变换"（`Time()`）而不是消息时间戳**：静态 TF 对所有时间成立，用最新变换不会错，还能避开仿真时钟与墙钟不一致的问题。**失效边界**：换成动态 TF（车轮、机械臂）时必须用 `stamp`，否则会拿到过期位姿。
 - **本机图像丢包是传输限制**：921 KB @27 Hz ≈ 25 MB/s，WSL 里 200 帧 bag 只收到 69 帧图，配对上限被图像帧数卡住，趋势不受影响但绝对值偏低。现场机器若同样丢包，配对数会少——这一点已写进 README 第五节。
 - **不做实时可视化窗口**：只用 `ros2 topic hz` + 落盘 png 验证，避免 `cv2.imshow` 在 WSL 里卡住整个节点；代价是现场演示需要另开一个看图程序（录屏脚本已自动弹出）。
+
+## AI 使用说明（按考核要求标注）
+
+- 本题代码与文档由 AI（豆包）生成；本人负责环境搭建、执行全部命令、确认技术选型、录屏，并逐条核对上文数据。
+- 验证方式：上文每条结论都附可复跑的命令与实际输出（M1-4 另见 `measurement_log.md`、`FAULTS.md`），不是"看起来能跑"。
+- 逐行研究：已跑通并核对数据，逐行理解仍在补；答辩时如实说明。完整清单见 `../AI使用声明.md`。
