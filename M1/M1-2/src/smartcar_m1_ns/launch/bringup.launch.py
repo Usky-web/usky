@@ -4,10 +4,13 @@
 
 常用命令：
     ros2 launch smartcar_m1_ns bringup.launch.py                     # 默认 robot1 + robot2
-    ros2 launch smartcar_m1_ns bringup.launch.py second_namespace:=  # 只起一组
-    ros2 launch smartcar_m1_ns bringup.launch.py namespace:=my_robot second_namespace:=
+    ros2 launch smartcar_m1_ns bringup.launch.py second_group:=false  # 只起一组
+    ros2 launch smartcar_m1_ns bringup.launch.py namespace:=my_robot second_group:=false
     ros2 launch smartcar_m1_ns bringup.launch.py params_file:=/abs/path/params_robot1.yaml
     ros2 launch smartcar_m1_ns bringup.launch.py params_file2:=/abs/path/params_robot2.yaml
+
+注意：`second_namespace:=` 留空会被 ros2 launch 判为
+"malformed launch argument"，所以要"只起一组"请用 second_group:=false。
 """
 
 import os
@@ -92,6 +95,8 @@ def launch_setup(context, *args, **kwargs):
     pf2_arg = LaunchConfiguration('params_file2').perform(context).strip()
     use_sim_raw = LaunchConfiguration('use_sim_time').perform(context).strip().lower()
     use_sim = use_sim_raw in ('true', '1', 'yes', 'on')
+    second_group_raw = LaunchConfiguration('second_group').perform(context).strip().lower()
+    second_group = second_group_raw in ('true', '1', 'yes', 'on')
 
     pf1 = pf1_arg or _default_params('params_robot1.yaml')
     ok, why = _check_params_file(pf1)
@@ -110,7 +115,7 @@ def launch_setup(context, *args, **kwargs):
     actions = [LogInfo(msg='[bringup] 组1 namespace=%s params=%s' % (ns1, pf1))]
     actions += _group(ns1, pf1, use_sim, None)
 
-    if ns2:
+    if second_group and ns2:
         note = ('复用同一份 YAML，Launch 内覆盖 alarm_threshold=0.5'
                 if override2 else '独立参数文件')
         actions.append(LogInfo(msg='[bringup] 组2 namespace=%s params=%s（%s）'
@@ -125,7 +130,9 @@ def generate_launch_description():
         DeclareLaunchArgument('namespace', default_value='robot1',
                               description='第一组节点使用的命名空间'),
         DeclareLaunchArgument('second_namespace', default_value='robot2',
-                              description='第二组节点使用的命名空间；设为空字符串则只启动一组'),
+                              description='第二组节点使用的命名空间'),
+        DeclareLaunchArgument('second_group', default_value='true',
+                              description='是否启动第二组；false=只起 namespace 指定的这一组'),
         DeclareLaunchArgument('params_file', default_value='',
                               description='第一组 YAML 参数文件路径（留空用包内默认文件）'),
         DeclareLaunchArgument('params_file2', default_value='',

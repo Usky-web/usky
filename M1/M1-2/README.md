@@ -46,11 +46,11 @@ source install/setup.bash
 # 默认：同时起 robot1 + robot2 两组，共 6 个节点
 ros2 launch smartcar_m1_ns bringup.launch.py
 
-# 只起一组（第二组置空）
-ros2 launch smartcar_m1_ns bringup.launch.py second_namespace:=
+# 只起一组（第二组关掉）
+ros2 launch smartcar_m1_ns bringup.launch.py second_group:=false
 
 # 自己指定命名空间（题面要求的形式）
-ros2 launch smartcar_m1_ns bringup.launch.py namespace:=my_robot second_namespace:=
+ros2 launch smartcar_m1_ns bringup.launch.py namespace:=my_robot second_group:=false
 
 # 指定参数文件
 ros2 launch smartcar_m1_ns bringup.launch.py \
@@ -61,7 +61,8 @@ ros2 launch smartcar_m1_ns bringup.launch.py \
 | Launch 参数          | 默认值      | 说明                                           |
 |:------------------ |:-------- |:-------------------------------------------- |
 | `namespace`        | `robot1` | 第一组命名空间                                      |
-| `second_namespace` | `robot2` | 第二组命名空间；设空则只起一组                              |
+| `second_namespace` | `robot2` | 第二组命名空间                                    |
+| `second_group`     | `true`   | 是否起第二组；`false` = 只起 `namespace` 这一组（**不能用 `second_namespace:=` 置空，launch 会报 malformed argument**） |
 | `params_file`      | 空        | 第一组 YAML；留空用包内 `params/params_robot1.yaml`   |
 | `params_file2`     | 空        | 第二组 YAML；留空 = **复用第一份文件 + Launch 内覆盖阈值 0.5** |
 | `use_sim_time`     | `false`  | 是否使用仿真时间                                     |
